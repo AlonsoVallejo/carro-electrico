@@ -1,0 +1,224 @@
+//*
+ * seno.c
+ * 
+ *  Created on: Feb 26, 2015
+ *      Author: Vallejo
+ */
+#include "seno.h"
+#include "math.h"
+int cont_max 			=	45;	// =inv(inv_cont_max)
+float inv_cont_max		=	0.0222;	// =Frec*0.0004				
+float pi				=	3.1416;
+float sqrt_3_2	        =	1.22474487;
+float uno_sqrt_2 	    =	0.70710678;
+float sqrt_2	 	    = 	1.41421356;
+float sin_60			=	0.86602540;
+float sin_30			=	0.5;	
+float pi_2				=	6.28318530;
+
+float S1_pwm, // norm PTC1
+	  S2_pwm, // comp PTC2 
+	  S3_pwm, // norm PTC3
+	  S4_pwm, // comp PTC4
+ 	  S5_pwm, // norm PTA1	 
+ 	  S6_pwm, // comp PTA2
+      sector,
+	  put_sector,
+	  cont=0,
+	  Frec;
+
+float Vref1,
+	   Vref2,
+	   Vref3,
+	   ref1,
+	   ref2,
+	   ref3,
+	   N,
+	   V_ab=0.65,
+	   V_a,
+	   V_a2,
+	   V_b,
+	   V_b2;
+
+float T0,
+	  T1,
+	  T2,
+	  x,
+	  Sin_cont,
+	  Cos_cont;
+
+
+float obtener_V_beta (unsigned int cont) // ams (00001140)
+{
+	x = pi_2 * inv_cont_max * (float)cont;
+	if(x <= pi) Sin_cont = -0.4*(x*x) + 1.27*x - 0.03;//0.004*(x*x*x*x) - 0.23*(x*x*x) + 0.05*(x*x) + 0.99*x;
+	else if(x > pi) 
+	{
+		x = x - pi;
+		Sin_cont = -1 * (-0.4*(x*x) + 1.27*x - 0.03);
+	}
+	V_b2 = V_ab * Sin_cont;
+	return V_b2;
+}
+
+float obtener_V_alfa (unsigned int cont)
+{
+	x = pi_2 * inv_cont_max * (float)cont;
+	if(x <= pi) Cos_cont = 0.14*(x*x*x) - 0.67*(x*x) + 0.07*x + 1;
+	else if(x > pi) 
+	{
+		x = pi_2 - x;
+		Cos_cont = 0.14*(x*x*x) - 0.67*(x*x) + 0.07*x + 1;//-0.01*(x*x*x*x*x) + 0.06*(x*x*x*x) - 0.02*(x*x*x) - 0.49*(x*x) + 1;
+	}
+	V_a2 = V_ab * Cos_cont;
+	return V_a2;
+}
+
+float modulacion_vectorial(float V_beta, float V_alfa)
+{
+	Vref1 =  V_beta;
+	Vref2 =  V_alfa * sin_60 - V_beta * sin_30;
+	Vref3 = -V_alfa * sin_60 - sin_30 * V_beta;
+	
+	if(Vref1 > 0.0) ref1  = (float)1;
+	else ref1 = (float)0.0;
+	
+	if(Vref2 > 0.0) ref2  = (float)1;
+	else ref2 = (float)0.0;
+	
+	if(Vref3 > 0.0) ref3  = (float)1;
+	else ref3 = (float)0.0;
+	
+	N = ref1 + (float)2*ref2 + (float)4*ref3;
+	
+	if(N==3) sector = (float)1;
+	else if(N==1) sector = (float)2;
+	else if(N==5) sector = (float)3;
+	else if(N==4) sector = (float)4;
+	else if(N==6) sector = (float)5;
+	else if(N==2) sector = (float)6;
+	
+	return	sector;
+}
+
+void indica_sector(float elegir_sector)
+{
+	
+	switch((int)elegir_sector)
+	{
+		case 1:
+			T1= sqrt_3_2 * V_a - 1* uno_sqrt_2 * V_b;
+			T2= sqrt_2 	 * V_b;
+			T0= (float)1 - T1 - T2;
+			S1_pwm = (float)255 * (T1 + T2 + (float)0.5*T0);
+			S3_pwm = (float)255 * (T2 + (float)0.5*T0);
+			S5_pwm = (float)255 * ((float)0.5*T0);
+			set_pwm_comp();
+			break;
+		
+		case 2:
+			T1= 	sqrt_3_2 * V_a + uno_sqrt_2 * V_b;
+			T2= (float)-1 * sqrt_3_2 * V_a + uno_sqrt_2 * V_b;
+			T0= (float)1 - T1 - T2;
+			S1_pwm=(float)255*(T1 + (float)0.5*T0);
+			S3_pwm=(float)255*(T1 + T2 + (float)0.5*T0);
+			S5_pwm=(float)255*((float)0.5*T0);
+			set_pwm_comp();
+		break;
+		
+		case 3:
+			T1 = sqrt_2 * V_b;
+			T2 = (float)-1 * sqrt_3_2 * V_a - uno_sqrt_2 * V_b;
+			T0 = (float)1 - T1 - T2;
+			S1_pwm = (float)255 * ((float)0.5 * T0);
+			S3_pwm = (float)255 *(T1 + T2 + (float)0.5 * T0);
+			S5_pwm = (float)255 *(T2 + (float)0.5 * T0);
+			set_pwm_comp();
+		break;
+		
+		case 4:
+			T1 = - sqrt_3_2 * V_a + uno_sqrt_2 * V_b;
+			T2 = - sqrt_2   * V_b;
+			T0 = (float)1 - T1 - T2;
+			S1_pwm = (float)255 * ((float)0.5 * T0);
+			S3_pwm = (float)255 * (T1 + (float)0.5 * T0);
+			S5_pwm = (float)255 * (T1 + T2 + (float)0.5 * T0);
+			set_pwm_comp();
+		break;
+		
+		case 5:
+			T1 = - sqrt_3_2 * V_a 	-  uno_sqrt_2 * V_b;
+			T2 =   sqrt_3_2 * V_a 	-  uno_sqrt_2 * V_b;
+			T0 = (float)1 - T1 - T2;
+			S1_pwm = (float)255 * (T2 + (float)0.5 * T0);
+			S3_pwm = (float)255 * ((float)0.5 * T0);
+			S5_pwm = (float)255 * (T1 + T2 + (float)0.5 * T0);
+			set_pwm_comp();
+		break;
+		
+		case 6:
+			T1= -  sqrt_2   * V_b;
+			T2=     sqrt_3_2 * V_a + uno_sqrt_2 * V_b;
+			T0= (float)1 - T1 - T2;
+			S1_pwm=(float)255 * (T1 + T2 + (float)0.5 * T0);
+			S3_pwm=(float)255 * ((float)0.5 * T0);
+			S5_pwm=(float)255 * (T1 + (float)0.5 * T0);
+			set_pwm_comp();
+		break;
+	}
+	
+	
+	pwm_write((int)S1_pwm, (int)S2_pwm, (int)S3_pwm, (int)S4_pwm, (int)S5_pwm, (int)S6_pwm);
+	
+}
+
+void set_pwm_comp(void)
+{
+	S2_pwm = S1_pwm + (float)5;
+	S4_pwm = S3_pwm + (float)5;
+	S6_pwm = S5_pwm + (float)5;
+	
+	if(S1_pwm > 250.0){
+		S2_pwm = 255.0;
+		S1_pwm = 250.0;
+		}
+	if(S3_pwm > 250.0){
+		S4_pwm = 255.0;
+		S3_pwm = 250.0;
+		}
+	if(S5_pwm > 250.0){
+		S6_pwm = 255.0;
+		S6_pwm = 250.0;
+		}
+	
+	
+	if(S2_pwm > 255.0) S2_pwm = 255.0;
+	if(S4_pwm > 255.0) S4_pwm = 255.0;
+	if(S6_pwm > 255.0) S6_pwm = 255.0;
+}
+
+
+void pwm(void)
+{
+	
+	//Frec = 10;
+	
+	//inv_cont_max=Frec*0.001;
+	//cont_max=1/(inv_cont_max);	
+
+	PTD1_HIGH;
+	V_a =  V_ab*cosf(2*pi*(inv_cont_max)*(float)cont);
+	V_b = V_ab*sinf(2*pi*(inv_cont_max)*(float)cont);
+	put_sector = modulacion_vectorial(V_b,V_a);
+	indica_sector(put_sector);
+	PTD1_LOW;
+
+	if(cont >= cont_max)
+	{ 
+		cont = 0;
+
+	}
+	else cont++;
+}
+
+
